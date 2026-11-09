@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -9,44 +9,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store";
-import { DEMO_BRANCH, DEMO_STAFF } from "@/lib/demo-data";
-import { setDemoCookie, clearDemoCookie } from "@/lib/demo-mode";
-import type { StaffRole } from "@/lib/constants";
-import { APP_DESCRIPTION, ROLE_LABELS } from "@/lib/constants";
+import { clearDemoCookie } from "@/lib/demo-mode";
+import { APP_DESCRIPTION } from "@/lib/constants";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { loadStaffSessionFromSupabase } from "@/lib/auth/staff-session";
+import { markSessionVerified } from "@/lib/auth/ensure-session";
 
-const DEMO_ROLES: StaffRole[] = [
-  "super_admin",
-  "manager",
-  "cashier",
-  "receptionist",
-  "coach",
-];
+function safeRedirectPath(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+    return "/dashboard";
+  }
+  return raw;
+}
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setSession = useAuthStore((s) => s.setSession);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("demo1234");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState<StaffRole>("super_admin");
-
-  const enterDemo = async (selectedRole: StaffRole = role) => {
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 500));
-    setDemoCookie();
-    setSession({
-      staff: { ...DEMO_STAFF, role: selectedRole },
-      branch: DEMO_BRANCH,
-      isDemoMode: true,
-    });
-    toast.success(`Signed in as ${ROLE_LABELS[selectedRole]}`);
-    router.push("/dashboard");
-    setLoading(false);
-  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +39,10 @@ export default function LoginPage() {
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!url || !key || url.includes("your-project")) {
-      await enterDemo(role);
+      toast.error("Supabase is not configured", {
+        description: "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.",
+      });
+      setLoading(false);
       return;
     }
 
@@ -88,16 +74,14 @@ export default function LoginPage() {
         branch: session.branch,
         isDemoMode: false,
       });
+      markSessionVerified();
 
       clearDemoCookie();
       toast.success("Welcome back");
-      router.push("/dashboard");
+      router.push(safeRedirectPath(searchParams.get("redirect")));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       toast.error(message);
-      toast.message("Tip", {
-        description: "If you can’t sign in, try a sample club below, or contact your club administrator.",
-      });
     } finally {
       setLoading(false);
     }
@@ -113,7 +97,7 @@ export default function LoginPage() {
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -right-16 bottom-10 h-80 w-80 rounded-full bg-emerald-400/20 blur-3xl"
+        className="pointer-events-none absolute -right-16 bottom-10 h-80 w-80 rounded-full bg-primary/15 blur-3xl"
         animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -147,76 +131,52 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="login">
-              <TabsList className="mb-4 w-full">
-                <TabsTrigger value="login" className="flex-1">
-                  Login
-                </TabsTrigger>
-                <TabsTrigger value="demo" className="flex-1">
-                  Demo Mode
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
-                <form onSubmit={onSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@email.com"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? <Loader2 className="animate-spin" /> : null}
-                    Sign in
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="demo" className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Explore the full admin experience with sample club data. Choose a role to preview permissions.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {DEMO_ROLES.map((r) => (
-                    <Button
-                      key={r}
-                      type="button"
-                      variant={role === r ? "default" : "outline"}
-                      onClick={() => setRole(r)}
-                      className="justify-start"
-                    >
-                      {ROLE_LABELS[r]}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={loading}
-                  onClick={() => enterDemo(role)}
-                >
-                  {loading ? <Loader2 className="animate-spin" /> : null}
-                  Enter as {ROLE_LABELS[role]}
-                </Button>
-              </TabsContent>
-            </Tabs>
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@email.com"
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin" /> : null}
+                Sign in
+              </Button>
+            </form>
           </CardContent>
         </Card>
       </motion.div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="bg-app flex min-h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

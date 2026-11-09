@@ -7,6 +7,7 @@ import {
   Clock,
   Loader2,
   Map,
+  Pencil,
   Plus,
   Users,
   X,
@@ -20,6 +21,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DEMO_OPEN_PLAY_SESSIONS } from "@/lib/demo-data";
 import { formatDateTime } from "@/lib/utils";
 import {
@@ -30,15 +39,19 @@ import {
 import { useAuthStore } from "@/store";
 import { BranchSelect } from "@/components/shared/branch-select";
 import { SessionPlayersPanel } from "@/components/open-play/session-players-panel";
+import { listCourts } from "@/services/courts";
 import {
   activateDueSessions,
   cancelScheduledSession,
   createScheduledSession,
   listOpenPlaySessions,
   sessionCourtNames,
+  setSessionCourts,
+  updateScheduledSession,
   type OpenPlaySessionRow,
   type OpenPlaySessionStatus,
 } from "@/services/sessions";
+import type { Court } from "@/types";
 
 const STATUS_VARIANT: Record<
   OpenPlaySessionStatus,
@@ -49,13 +62,20 @@ const STATUS_VARIANT: Record<
   closed: "secondary",
 };
 
-const STATUS_FILTERS = ["scheduled", "open", "closed", "all"] as const;
+const STATUS_FILTERS = [
+  "upcoming",
+  "scheduled",
+  "open",
+  "closed",
+  "all",
+] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  upcoming: "Upcoming",
   scheduled: "Scheduled",
   open: "Open",
-  closed: "Closed",
+  closed: "Done / closed",
   all: "All statuses",
 };
 
@@ -76,6 +96,41 @@ function defaultEndLocal() {
   return toLocalInputValue(d);
 }
 
+function parseSessionForm(
+  title: string,
+  startsLocal: string,
+  endsLocal: string,
+  maxPlayers: number,
+  requireFutureEnd: boolean
+):
+  | { ok: true; trimmedTitle: string; startsAt: Date; endsAt: Date }
+  | { ok: false; message: string } {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) {
+    return { ok: false, message: "Title is required" };
+  }
+  if (!startsLocal || !endsLocal) {
+    return { ok: false, message: "Start and end times are required" };
+  }
+
+  const startsAt = new Date(startsLocal);
+  const endsAt = new Date(endsLocal);
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+    return { ok: false, message: "Invalid date/time" };
+  }
+  if (endsAt <= startsAt) {
+    return { ok: false, message: "End time must be after start time" };
+  }
+  if (requireFutureEnd && endsAt.getTime() <= Date.now()) {
+    return { ok: false, message: "End time must be in the future" };
+  }
+  if (maxPlayers <= 0) {
+    return { ok: false, message: "Max players must be greater than 0" };
+  }
+
+  return { ok: true, trimmedTitle, startsAt, endsAt };
+}
+
 export default function OpenPlaySchedulePage() {
   const { isDemoMode, branch } = useAuthStore();
   const [sessions, setSessions] = useState<OpenPlaySessionRow[]>([]);
@@ -91,8 +146,33 @@ export default function OpenPlaySchedulePage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   );
-  // Default to all so open sessions (with the live roster) stay visible next to scheduled ones.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Default hides closed/done sessions; open + scheduled stay in the list.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
+  const [editingSession, setEditingSession] = useState<OpenPlaySessionRow | null>(
+    null
+  );
+  const [editTitle, setEditTitle] = useState("");
+  const [editStartsLocal, setEditStartsLocal] = useState(defaultStartLocal);
+  const [editEndsLocal, setEditEndsLocal] = useState(defaultEndLocal);
+  const [editMaxPlayers, setEditMaxPlayers] = useState(32);
+  const [editMatchingStyle, setEditMatchingStyle] =
+    useState<MatchingStyle>("auto_balanced");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [openPlayCourts, setOpenPlayCourts] = useState<Court[]>([]);
+  const [createCourtIds, setCreateCourtIds] = useState<string[]>([]);
+  const [editCourtIds, setEditCourtIds] = useState<string[]>([]);
+
+  const toggleCourtId = (
+    ids: string[],
+    setIds: (next: string[]) => void,
+    courtId: string
+  ) => {
+    setIds(
+      ids.includes(courtId)
+        ? ids.filter((id) => id !== courtId)
+        : [...ids, courtId]
+    );
+  };
 
   async function loadLive() {
     if (!branch?.id) {
@@ -158,11 +238,53 @@ export default function OpenPlaySchedulePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDemoMode, branch?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCourts() {
+      if (!branch?.id) {
+        setOpenPlayCourts([]);
+        return;
+      }
+      if (isDemoMode) {
+        const { DEMO_COURTS } = await import("@/lib/demo-data");
+        const rows = DEMO_COURTS.filter(
+          (c) => c.branch_id === branch.id && c.is_open_play
+        );
+        if (!cancelled) setOpenPlayCourts(rows);
+        return;
+      }
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const rows = await listCourts(supabase, branch.id);
+        if (!cancelled) {
+          setOpenPlayCourts(rows.filter((c) => c.is_open_play));
+        }
+      } catch {
+        if (!cancelled) setOpenPlayCourts([]);
+      }
+    }
+
+    void loadCourts();
+    return () => {
+      cancelled = true;
+    };
+  }, [branch?.id, isDemoMode]);
+
+  useEffect(() => {
+    if (openPlayCourts.length === 1 && createCourtIds.length === 0) {
+      setCreateCourtIds([openPlayCourts[0].id]);
+    }
+  }, [openPlayCourts, createCourtIds.length]);
+
   const upcoming = useMemo(() => {
     const filtered =
       statusFilter === "all"
         ? sessions
-        : sessions.filter((s) => s.status === statusFilter);
+        : statusFilter === "upcoming"
+          ? sessions.filter((s) => s.status !== "closed")
+          : sessions.filter((s) => s.status === statusFilter);
     return [...filtered].sort(
       (a, b) =>
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
@@ -183,35 +305,79 @@ export default function OpenPlaySchedulePage() {
     }
   }, [upcoming, selectedSessionId]);
 
-  const createSession = async () => {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      toast.error("Title is required");
-      return;
-    }
-    if (!startsLocal || !endsLocal) {
-      toast.error("Start and end times are required");
-      return;
-    }
+  const openEditDialog = (session: OpenPlaySessionRow) => {
+    if (session.status === "closed") return;
+    setEditingSession(session);
+    setEditTitle(session.title?.trim() ?? "");
+    setEditStartsLocal(toLocalInputValue(new Date(session.starts_at)));
+    setEditEndsLocal(toLocalInputValue(new Date(session.ends_at)));
+    setEditMaxPlayers(session.max_players);
+    setEditMatchingStyle(
+      (session.matching_style as MatchingStyle) ?? "auto_balanced"
+    );
+    setEditCourtIds(
+      (session.session_courts ?? [])
+        .map((sc) => sc.court_id)
+        .filter((id): id is string => Boolean(id))
+    );
+  };
 
-    const startsAt = new Date(startsLocal);
-    const endsAt = new Date(endsLocal);
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
-      toast.error("Invalid date/time");
+  function CourtAssignmentFields({
+    courtIds,
+    onChange,
+    idPrefix,
+  }: {
+    courtIds: string[];
+    onChange: (next: string[]) => void;
+    idPrefix: string;
+  }) {
+    return (
+      <div className="space-y-2">
+        <Label>Assigned courts</Label>
+        {openPlayCourts.length === 0 ? (
+          <p className="text-xs text-amber-600 dark:text-amber-300">
+            No open-play courts. Set court type to Hybrid or Open Play in
+            Settings → Courts.
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {openPlayCourts.map((court) => (
+              <label
+                key={court.id}
+                htmlFor={`${idPrefix}-${court.id}`}
+                className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-3 py-2 text-sm"
+              >
+                <input
+                  id={`${idPrefix}-${court.id}`}
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border"
+                  checked={courtIds.includes(court.id)}
+                  onChange={() =>
+                    toggleCourtId(courtIds, onChange, court.id)
+                  }
+                />
+                <span className="min-w-0 flex-1">{court.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const createSession = async () => {
+    const parsed = parseSessionForm(
+      title,
+      startsLocal,
+      endsLocal,
+      maxPlayers,
+      true
+    );
+    if (!parsed.ok) {
+      toast.error(parsed.message);
       return;
     }
-    if (endsAt <= startsAt) {
-      toast.error("End time must be after start time");
-      return;
-    }
-    if (endsAt.getTime() <= Date.now()) {
-      toast.error("End time must be in the future");
-      return;
-    }
-    if (maxPlayers <= 0) {
-      toast.error("Max players must be greater than 0");
-      return;
-    }
+    const { trimmedTitle, startsAt, endsAt } = parsed;
 
     setSaving(true);
 
@@ -234,12 +400,18 @@ export default function OpenPlaySchedulePage() {
         style_config: {},
         created_by: null,
         court: null,
-        session_courts: [],
+        session_courts: createCourtIds.map((court_id) => ({
+          court_id,
+          court: openPlayCourts.find((c) => c.id === court_id) ?? null,
+        })),
       };
       setSessions((prev) => [row, ...prev]);
       setTitle("");
       setStartsLocal(defaultStartLocal());
       setEndsLocal(defaultEndLocal());
+      setCreateCourtIds(
+        openPlayCourts.length === 1 ? [openPlayCourts[0].id] : []
+      );
       toast.success(withinRange ? "Session opened" : "Session scheduled", {
         description: `${trimmedTitle} · ${formatDateTime(row.starts_at)}`,
       });
@@ -251,18 +423,25 @@ export default function OpenPlaySchedulePage() {
       if (!branch?.id) throw new Error("No branch selected");
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
-      await createScheduledSession(supabase, {
+      const created = await createScheduledSession(supabase, {
         branchId: branch.id,
         title: trimmedTitle,
         startsAt: startsAt.toISOString(),
         endsAt: endsAt.toISOString(),
         maxPlayers,
         matchingStyle,
+        courtIds: createCourtIds.length ? createCourtIds : undefined,
       });
+      if (createCourtIds.length > 0) {
+        await setSessionCourts(supabase, created.id, createCourtIds);
+      }
       await loadLive();
       setTitle("");
       setStartsLocal(defaultStartLocal());
       setEndsLocal(defaultEndLocal());
+      setCreateCourtIds(
+        openPlayCourts.length === 1 ? [openPlayCourts[0].id] : []
+      );
       toast.success("Session saved");
     } catch (err) {
       const message =
@@ -270,6 +449,82 @@ export default function OpenPlaySchedulePage() {
       toast.error(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveEditedSession = async () => {
+    if (!editingSession) return;
+
+    const parsed = parseSessionForm(
+      editTitle,
+      editStartsLocal,
+      editEndsLocal,
+      editMaxPlayers,
+      editingSession.status === "scheduled"
+    );
+    if (!parsed.ok) {
+      toast.error(parsed.message);
+      return;
+    }
+    const { trimmedTitle, startsAt, endsAt } = parsed;
+
+    if (
+      editingSession.status === "open" &&
+      endsAt.getTime() <= Date.now()
+    ) {
+      toast.error("End time must still be in the future for an open session");
+      return;
+    }
+
+    setSavingEdit(true);
+
+    if (isDemoMode) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === editingSession.id
+            ? {
+                ...s,
+                title: trimmedTitle,
+                starts_at: startsAt.toISOString(),
+                ends_at: endsAt.toISOString(),
+                max_players: editMaxPlayers,
+                matching_style: editMatchingStyle,
+                session_courts: editCourtIds.map((court_id) => ({
+                  court_id,
+                  court: openPlayCourts.find((c) => c.id === court_id) ?? null,
+                })),
+              }
+            : s
+        )
+      );
+      toast.success("Session updated");
+      setEditingSession(null);
+      setSavingEdit(false);
+      return;
+    }
+
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await updateScheduledSession(supabase, editingSession.id, {
+        title: trimmedTitle,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        maxPlayers: editMaxPlayers,
+        matchingStyle: editMatchingStyle,
+      });
+      if (editCourtIds.length > 0) {
+        await setSessionCourts(supabase, editingSession.id, editCourtIds);
+      }
+      await loadLive();
+      toast.success("Session updated");
+      setEditingSession(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update session";
+      toast.error(message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -356,9 +611,11 @@ export default function OpenPlaySchedulePage() {
                 onChange={(e) => setEndsLocal(e.target.value)}
               />
             </div>
-            <div className="rounded-xl border border-border/60 bg-background/30 px-3 py-2 text-xs text-muted-foreground">
-              Courts are assigned on Open Play Queue for each open session.
-            </div>
+            <CourtAssignmentFields
+              idPrefix="create-session"
+              courtIds={createCourtIds}
+              onChange={setCreateCourtIds}
+            />
             <div className="space-y-1.5">
               <Label htmlFor="session-capacity">Max players</Label>
               <Input
@@ -436,8 +693,8 @@ export default function OpenPlaySchedulePage() {
             ) : upcoming.length === 0 ? (
               <EmptyState
                 title={
-                  statusFilter === "all"
-                    ? "No sessions scheduled"
+                  statusFilter === "all" || statusFilter === "upcoming"
+                    ? "No upcoming sessions"
                     : `No ${STATUS_FILTER_LABELS[statusFilter].toLowerCase()} sessions`
                 }
                 description={
@@ -501,15 +758,27 @@ export default function OpenPlaySchedulePage() {
                         </span>
                       </div>
                     </button>
-                    {session.status === "scheduled" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void cancelSession(session)}
-                      >
-                        <X className="mr-1.5 h-3.5 w-3.5" />
-                        Cancel
-                      </Button>
+                    {session.status !== "closed" ? (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(session)}
+                        >
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        {session.status === "scheduled" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void cancelSession(session)}
+                          >
+                            <X className="mr-1.5 h-3.5 w-3.5" />
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </motion.div>
                 ))}
@@ -528,6 +797,104 @@ export default function OpenPlaySchedulePage() {
           />
         </div>
       ) : null}
+
+      <Dialog
+        open={editingSession !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingSession(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit session</DialogTitle>
+            <DialogDescription>
+              Update title, window, capacity, matching style, and which courts
+              members see on the Open Play booking list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-session-title">Title</Label>
+              <Input
+                id="edit-session-title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-session-start">Starts at</Label>
+              <Input
+                id="edit-session-start"
+                type="datetime-local"
+                value={editStartsLocal}
+                onChange={(e) => setEditStartsLocal(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-session-end">Ends at</Label>
+              <Input
+                id="edit-session-end"
+                type="datetime-local"
+                value={editEndsLocal}
+                onChange={(e) => setEditEndsLocal(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-session-capacity">Max players</Label>
+              <Input
+                id="edit-session-capacity"
+                type="number"
+                min={1}
+                value={editMaxPlayers}
+                onChange={(e) =>
+                  setEditMaxPlayers(Number(e.target.value) || 0)
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-session-style">Matching style</Label>
+              <select
+                id="edit-session-style"
+                className={selectClassName}
+                value={editMatchingStyle}
+                onChange={(e) =>
+                  setEditMatchingStyle(e.target.value as MatchingStyle)
+                }
+              >
+                {MATCHING_STYLES.map((style) => (
+                  <option key={style} value={style}>
+                    {MATCHING_STYLE_LABELS[style]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <CourtAssignmentFields
+              idPrefix="edit-session"
+              courtIds={editCourtIds}
+              onChange={setEditCourtIds}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingSession(null)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              disabled={savingEdit}
+              onClick={() => void saveEditedSession()}
+            >
+              {savingEdit ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardShell>
   );
 }

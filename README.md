@@ -1,8 +1,8 @@
-# House No 14 Admin Dashboard
+# The Grounds Admin Dashboard
 
-Enterprise-grade admin console for **House No 14** — smart membership, wallet, court booking, and Open Play.
+Enterprise-grade admin console for **The Grounds** — smart membership, wallet, court booking, and Open Play.
 
-Separate from the [Member PWA](https://github.com/arkwaretechnologies/houseno14), connected to the same Supabase backend.
+Separate from the [Member PWA](https://github.com/arkwaretechnologies/thegroundsimelda), connected to the same Supabase backend.
 
 ## Stack
 
@@ -29,7 +29,6 @@ Separate from the [Member PWA](https://github.com/arkwaretechnologies/houseno14)
 - Audit logs, reports (PDF/CSV/Excel hooks)
 - AI Insights (forecast, churn, queue optimization — demo layer)
 - Multi-branch ready schema from day one
-- Demo Mode (works without Supabase credentials)
 
 ## Quick start
 
@@ -39,13 +38,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) → **Login** → **Demo Mode**.
+Open [http://localhost:3000](http://localhost:3000) and sign in with a staff account.
 
-### Demo credentials (local UI)
-
-When Supabase env vars are unset, the login form falls back to Demo Mode. Or use the **Demo Mode** tab and pick a role.
-
-For live Supabase, create a staff Auth user and a matching `profiles` row with `role` = `staff` or `admin` and an `admin_role` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+Create a staff Auth user and a matching `profiles` row with `role` = `staff` or `admin` and an `admin_role` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ## Environment
 
@@ -58,7 +53,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Use the **same Supabase project** as the House No 14 member app.
+Use the **same Supabase project** as [The Grounds member app](https://github.com/arkwaretechnologies/thegroundsimelda).
 
 ## Database
 
@@ -131,4 +126,4 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## License
 
-Proprietary — Arkware / House No 14
+Proprietary — Arkware / The Grounds

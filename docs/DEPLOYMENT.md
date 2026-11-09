@@ -1,8 +1,8 @@
-# Deployment Guide — House No 14 Admin
+# Deployment Guide — The Grounds Admin
 
 ## 1. Supabase
 
-1. Use the **same Supabase project** as the [House No 14 member PWA](https://github.com/arkwaretechnologies/houseno14).
+1. Use the **same Supabase project** as [The Grounds member PWA](https://github.com/arkwaretechnologies/thegroundsimelda).
 2. Apply any additive admin migrations your project still needs (audit logs, TV displays, promo codes, `admin_role` on `profiles`, court/inventory extras, wallet approval, etc.). Do **not** recreate member PWA tables.
 3. Confirm Realtime is enabled for:
    - `open_play_queue`
@@ -18,7 +18,7 @@
 5. Create a staff user in Supabase Auth, then ensure a matching `profiles` row (same `id` as the auth user):
 
 ```sql
--- After signing up the user in Auth (or creating via dashboard), e.g. branch from House No 14 seed:
+-- After signing up the user in Auth (or creating via dashboard), e.g. branch from The Grounds seed (20261102000001_the_grounds_seed.sql):
 insert into public.profiles (
   id,
   full_name,
@@ -77,7 +77,25 @@ Staff sign-in requires `profiles.role` in (`staff`, `admin`) and a non-null `adm
 3. Scope module queries by `branch_id` (schema + RLS).
 4. Add consolidated reporting views that union branches for Super Admin.
 
-## 5. Observability
+## 5. Reservations calendar (member Book a court sync)
+
+Apply member migrations on the shared project (if not already):
+
+1. `supabase/migrations/20261109120000_court_schedule_blocks.sql` (from member repo or admin copy)
+2. `supabase/migrations/20261110140000_create_booking_debit_after_insert.sql` (FCFS: booking insert before wallet debit)
+
+Admin **Reservations** reads `bookings`, `court_schedule_blocks`, and `branch_settings.exclusive_open_hour` / `exclusive_close_hour`. Closures block member booking; paid `confirmed` bookings show as booked.
+
+## 6. Hybrid court (exclusive by day, open play at night)
+
+For a single court used for **hourly exclusive booking until 6 PM** and **open play sessions** in the evening:
+
+1. **Settings → Pricing → Exclusive booking window:** set open `6`, close `18` (Manila hours; last exclusive slot 5–6 PM).
+2. **Settings → Courts:** set **Court 1** to **Hybrid (exclusive + open play)** and save.
+3. **Open Play Schedule:** create 6–9 PM and 9 PM–12 AM sessions; check **Court 1** under assigned courts (or edit existing sessions).
+4. Member app **Book a court:** Exclusive tab shows hourly slots until 6 PM; Open Play tab lists evening sessions with court names.
+
+## 7. Observability
 
 - Enable Vercel Analytics
 - Forward edge logs

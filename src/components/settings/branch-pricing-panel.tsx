@@ -9,6 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DEMO_BRANCH_SERVICES, DEMO_COURTS } from "@/lib/demo-data";
+import {
+  formatExclusiveHourLabel,
+  lastExclusiveSlotStartHour,
+  validateExclusiveHours,
+} from "@/lib/exclusive-hours";
 import { centsToPesosInput, pesosToCents } from "@/lib/money";
 import { listCourts } from "@/services/courts";
 import {
@@ -29,7 +34,12 @@ export function BranchPricingPanel() {
 
   const [loading, setLoading] = useState(true);
   const [savingFees, setSavingFees] = useState(false);
+  const [savingHours, setSavingHours] = useState(false);
   const [savingCourts, setSavingCourts] = useState(false);
+  const [exclusiveHours, setExclusiveHours] = useState({
+    open: "6",
+    close: "18",
+  });
   const [services, setServices] = useState<BranchService[]>([]);
   const [courts, setCourts] = useState<Court[]>([]);
   const [fees, setFees] = useState({
@@ -67,6 +77,7 @@ export function BranchPricingPanel() {
         walkInOpenPlay: centsToPesosInput(openPlay),
         walkInExclusive: centsToPesosInput(rental),
       });
+      setExclusiveHours({ open: "6", close: "18" });
       setCourtRates(
         Object.fromEntries(
           demoCourts.map((c) => [c.id, String(c.hourly_rate)])
@@ -91,6 +102,10 @@ export function BranchPricingPanel() {
         exclusive: centsToPesosInput(feeRow.exclusive_court_fee_cents),
         walkInOpenPlay: centsToPesosInput(feeRow.walk_in_open_play_fee_cents),
         walkInExclusive: centsToPesosInput(feeRow.walk_in_exclusive_fee_cents),
+      });
+      setExclusiveHours({
+        open: String(feeRow.exclusive_open_hour ?? 6),
+        close: String(feeRow.exclusive_close_hour ?? 22),
       });
       setCourtRates(
         Object.fromEntries(courtRows.map((c) => [c.id, String(c.hourly_rate)]))
@@ -165,6 +180,41 @@ export function BranchPricingPanel() {
       toast.error(message);
     } finally {
       setSavingFees(false);
+    }
+  }
+
+  async function saveExclusiveHours() {
+    if (!branchId) return;
+    const openHour = Number.parseInt(exclusiveHours.open, 10);
+    const closeHour = Number.parseInt(exclusiveHours.close, 10);
+    const valid = validateExclusiveHours(openHour, closeHour);
+    if (!valid.ok) {
+      toast.error(valid.message);
+      return;
+    }
+
+    setSavingHours(true);
+    if (isDemoMode) {
+      toast.success("Exclusive hours saved");
+      setSavingHours(false);
+      return;
+    }
+
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await upsertBranchFeeDefaults(supabase, branchId, {
+        exclusive_open_hour: openHour,
+        exclusive_close_hour: closeHour,
+      });
+      toast.success("Exclusive booking hours saved");
+      await load();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to save exclusive hours";
+      toast.error(message);
+    } finally {
+      setSavingHours(false);
     }
   }
 
@@ -294,10 +344,70 @@ export function BranchPricingPanel() {
           </div>
           <Button
             onClick={() => void saveFeeDefaults()}
-            disabled={savingFees || savingCourts}
+            disabled={savingFees || savingCourts || savingHours}
           >
             {savingFees && <Loader2 className="h-4 w-4 animate-spin" />}
             Save fee defaults
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Exclusive booking window</CardTitle>
+          <CardDescription>
+            Members can book exclusive hourly slots between these hours (Manila
+            time). Set close to 18 (6 PM) so evenings are reserved for Open Play
+            schedules. Last bookable slot starts at{" "}
+            {lastExclusiveSlotStartHour(
+              Number.parseInt(exclusiveHours.open, 10) || 0,
+              Number.parseInt(exclusiveHours.close, 10) || 0
+            ) !== null
+              ? formatExclusiveHourLabel(
+                  lastExclusiveSlotStartHour(
+                    Number.parseInt(exclusiveHours.open, 10) || 0,
+                    Number.parseInt(exclusiveHours.close, 10) || 0
+                  )!
+                )
+              : "—"}
+            .
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${uid}-exclusive-open`}>First hour (0–23)</Label>
+              <Input
+                id={`${uid}-exclusive-open`}
+                type="number"
+                min={0}
+                max={23}
+                value={exclusiveHours.open}
+                onChange={(e) =>
+                  setExclusiveHours((h) => ({ ...h, open: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${uid}-exclusive-close`}>Close hour (1–24)</Label>
+              <Input
+                id={`${uid}-exclusive-close`}
+                type="number"
+                min={1}
+                max={24}
+                value={exclusiveHours.close}
+                onChange={(e) =>
+                  setExclusiveHours((h) => ({ ...h, close: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <Button
+            onClick={() => void saveExclusiveHours()}
+            disabled={savingFees || savingCourts || savingHours}
+          >
+            {savingHours && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save exclusive hours
           </Button>
         </CardContent>
       </Card>
@@ -358,7 +468,9 @@ export function BranchPricingPanel() {
           )}
           <Button
             onClick={() => void saveCourtRates()}
-            disabled={savingFees || savingCourts || courts.length === 0}
+            disabled={
+              savingFees || savingCourts || savingHours || courts.length === 0
+            }
           >
             {savingCourts && <Loader2 className="h-4 w-4 animate-spin" />}
             Save court rates

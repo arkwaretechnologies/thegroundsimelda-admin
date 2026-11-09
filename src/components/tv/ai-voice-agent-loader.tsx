@@ -23,7 +23,7 @@ export function AiVoiceAgentLoader({
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 flex w-full max-w-md flex-col items-center px-8"
       >
-        <BrandMark size="lg" className="mb-8 shadow-2xl shadow-emerald-500/40" />
+        <BrandMark size="lg" className="mb-8 shadow-2xl shadow-primary/40" />
 
         <p className="font-[family-name:var(--font-display)] text-center text-2xl font-semibold tracking-tight md:text-3xl">
           {status === "error" ? "Voice agent unavailable" : "Loading AI Voice Agent"}

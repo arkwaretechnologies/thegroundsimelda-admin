@@ -180,6 +180,7 @@ export type Database = {
           status: Database["public"]["Enums"]["booking_status"]
           type: Database["public"]["Enums"]["booking_type"]
           walk_in_id: string | null
+          walk_in_label: string | null
         }
         Insert: {
           branch_id: string
@@ -195,6 +196,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["booking_status"]
           type?: Database["public"]["Enums"]["booking_type"]
           walk_in_id?: string | null
+          walk_in_label?: string | null
         }
         Update: {
           branch_id?: string
@@ -210,6 +212,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["booking_status"]
           type?: Database["public"]["Enums"]["booking_type"]
           walk_in_id?: string | null
+          walk_in_label?: string | null
         }
         Relationships: [
           {
@@ -469,6 +472,61 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      court_schedule_blocks: {
+        Row: {
+          branch_id: string
+          court_id: string
+          created_at: string
+          created_by: string | null
+          ends_at: string
+          id: string
+          reason: string | null
+          starts_at: string
+        }
+        Insert: {
+          branch_id: string
+          court_id: string
+          created_at?: string
+          created_by?: string | null
+          ends_at: string
+          id?: string
+          reason?: string | null
+          starts_at: string
+        }
+        Update: {
+          branch_id?: string
+          court_id?: string
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string
+          id?: string
+          reason?: string | null
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "court_schedule_blocks_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "court_schedule_blocks_court_id_fkey"
+            columns: ["court_id"]
+            isOneToOne: false
+            referencedRelation: "courts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "court_schedule_blocks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -3134,6 +3192,36 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      staff_close_court_day: {
+        Args: {
+          p_court_id: string
+          p_date: string
+          p_reason?: string | null
+        }
+        Returns: Database["public"]["Tables"]["court_schedule_blocks"]["Row"]
+      }
+      staff_create_booking: {
+        Args: {
+          p_court_id: string
+          p_starts_at: string
+          p_ends_at: string
+          p_walk_in_label?: string | null
+        }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
+      }
+      staff_delete_court_blocks: {
+        Args: { p_block_ids: string[] }
+        Returns: undefined
+      }
+      staff_set_court_blocks: {
+        Args: {
+          p_court_id: string
+          p_date: string
+          p_hours: number[]
+          p_reason?: string | null
+        }
+        Returns: Database["public"]["Tables"]["court_schedule_blocks"]["Row"][]
       }
       pick_available_court: {
         Args: {

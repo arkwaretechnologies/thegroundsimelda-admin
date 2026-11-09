@@ -535,7 +535,7 @@ export default function TvDisplayFullscreenPage() {
       <div className="relative z-10 flex min-h-screen flex-col px-10 py-8 lg:px-16 lg:py-10">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <BrandMark size="lg" className="shadow-2xl shadow-emerald-500/30" />
+            <BrandMark size="lg" className="shadow-2xl shadow-primary/30" />
             <div>
               <BrandMark
                 variant="wordmark"

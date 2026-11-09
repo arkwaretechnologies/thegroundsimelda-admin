@@ -28,7 +28,7 @@ test("formatCurrency returns PHP-style output", () => {
 
 test("getInitials and slugify helpers", () => {
   assert.equal(getInitials("Alex Rivera"), "AR");
-  assert.equal(slugify("House No 14 BGC"), "house-no-14-bgc");
+  assert.equal(slugify("The Grounds BGC"), "the-grounds-bgc");
 });
 
 test("memberSchema validates required name", () => {

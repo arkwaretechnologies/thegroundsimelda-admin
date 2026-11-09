@@ -44,6 +44,7 @@ import { updateBranch } from "@/services/branches";
 import {
   deleteCourt,
   listCourts,
+  courtModeFromFlags,
   updateCourtMode,
   type CourtMode,
 } from "@/services/courts";
@@ -84,7 +85,7 @@ function branchToForm(branch: Branch): BusinessForm {
 }
 
 function courtModeFromCourt(court: Court): CourtMode {
-  return court.is_exclusive ? "exclusive" : "open_play";
+  return courtModeFromFlags(court.is_exclusive, court.is_open_play);
 }
 
 function courtModesFromCourts(courts: Court[]): Record<string, CourtMode> {
@@ -193,8 +194,8 @@ export default function SettingsPage() {
   });
 
   const [branding, setBranding] = useState({
-    primaryColor: "#16a34a",
-    accentColor: "#22c55e",
+    primaryColor: "#d4a845",
+    accentColor: "#0f3d26",
   });
 
   const [branchCourts, setBranchCourts] = useState<Court[]>([]);
@@ -272,8 +273,10 @@ export default function SettingsPage() {
           const mode = courtModes[court.id];
           const demoEntry = DEMO_COURTS.find((c) => c.id === court.id);
           if (demoEntry) {
-            demoEntry.is_open_play = mode === "open_play";
-            demoEntry.is_exclusive = mode === "exclusive";
+            demoEntry.is_open_play =
+              mode === "open_play" || mode === "hybrid";
+            demoEntry.is_exclusive =
+              mode === "exclusive" || mode === "hybrid";
             demoEntry.updated_at = new Date().toISOString();
           }
         }
@@ -579,9 +582,9 @@ export default function SettingsPage() {
                 Court Types
               </CardTitle>
               <CardDescription>
-                Open Play courts can be assigned to the queue and open play
-                sessions. Exclusive courts are for reservations and private
-                bookings only.
+                Hybrid courts support exclusive hourly booking until branch
+                close hour, then open play sessions in the evening. Open Play
+                is queue-only; Exclusive is reservations only.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -612,7 +615,12 @@ export default function SettingsPage() {
                           <div>
                             <p className="font-medium">{court.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {mode === "open_play" ? (
+                              {mode === "hybrid" ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Unlock className="h-3 w-3" />
+                                  Hybrid · exclusive + open play
+                                </span>
+                              ) : mode === "open_play" ? (
                                 <span className="inline-flex items-center gap-1">
                                   <Unlock className="h-3 w-3" />
                                   Open play eligible
@@ -638,6 +646,7 @@ export default function SettingsPage() {
                               }}
                               aria-label={`Mode for ${court.name}`}
                             >
+                              <option value="hybrid">Hybrid (recommended)</option>
                               <option value="open_play">Open Play</option>
                               <option value="exclusive">Exclusive</option>
                             </select>
@@ -814,7 +823,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center gap-4 rounded-2xl bg-background/50 p-4">
-                <BrandMark size="md" className="h-16 w-16 shadow-lg shadow-primary/30" />
+                <BrandMark size="md" className="shadow-lg shadow-primary/30" />
                 <div className="flex-1">
                   <p className="font-medium">Club Logo</p>
                   <p className="text-xs text-muted-foreground">PNG or SVG, at least 256×256px.</p>

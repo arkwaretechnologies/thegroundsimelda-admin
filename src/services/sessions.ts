@@ -35,6 +35,15 @@ export type CreateScheduledSessionInput = {
   courtIds?: string[];
 };
 
+export type UpdateScheduledSessionInput = {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  maxPlayers: number;
+  matchingStyle: MatchingStyle;
+  styleConfig?: Record<string, unknown>;
+};
+
 const SESSION_LIST_SELECT =
   "*, court:courts!open_play_sessions_court_id_fkey(id, name), session_courts:open_play_session_courts!open_play_session_courts_session_id_fk(court_id, court:courts!open_play_session_courts_court_id_fkey(id, name, status, is_open_play))";
 
@@ -106,6 +115,24 @@ export async function cancelScheduledSession(client: Client, sessionId: string) 
   });
   if (error) throw new Error(error.message);
   return data as OpenPlaySessionRow;
+}
+
+export async function updateScheduledSession(
+  _client: Client,
+  sessionId: string,
+  input: UpdateScheduledSessionInput
+) {
+  const res = await fetch(`/api/open-play/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await res.json().catch(() => ({}))) as { error?: string };
+
+  if (!res.ok) {
+    throw new Error(payload.error ?? "Failed to update session");
+  }
 }
 
 export function sessionCourtNames(session: OpenPlaySessionRow): string {

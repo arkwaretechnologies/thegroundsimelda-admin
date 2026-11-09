@@ -25,6 +25,8 @@ export type BranchFeeDefaults = {
   default_open_play_fee_cents: number;
   exclusive_court_fee_cents: number;
   walk_in_exclusive_fee_cents: number;
+  exclusive_open_hour: number;
+  exclusive_close_hour: number;
 };
 
 function billingUnitForType(type: BranchServiceType): BranchServiceBillingUnit {
@@ -192,7 +194,7 @@ export async function getBranchFeeDefaults(client: Client, branchId: string) {
   const { data, error } = await client
     .from("branch_settings")
     .select(
-      "branch_id, walk_in_open_play_fee_cents, default_open_play_fee_cents, exclusive_court_fee_cents, walk_in_exclusive_fee_cents, updated_at"
+      "branch_id, walk_in_open_play_fee_cents, default_open_play_fee_cents, exclusive_court_fee_cents, walk_in_exclusive_fee_cents, exclusive_open_hour, exclusive_close_hour, updated_at"
     )
     .eq("branch_id", branchId)
     .maybeSingle();
@@ -206,6 +208,8 @@ export async function getBranchFeeDefaults(client: Client, branchId: string) {
       default_open_play_fee_cents: 0,
       exclusive_court_fee_cents: 0,
       walk_in_exclusive_fee_cents: 0,
+      exclusive_open_hour: 6,
+      exclusive_close_hour: 22,
       updated_at: new Date().toISOString(),
     } satisfies Pick<
       BranchSettings,
@@ -214,6 +218,8 @@ export async function getBranchFeeDefaults(client: Client, branchId: string) {
       | "default_open_play_fee_cents"
       | "exclusive_court_fee_cents"
       | "walk_in_exclusive_fee_cents"
+      | "exclusive_open_hour"
+      | "exclusive_close_hour"
       | "updated_at"
     >;
   }
@@ -237,7 +243,7 @@ export async function upsertBranchFeeDefaults(
     .from("branch_settings")
     .upsert(payload, { onConflict: "branch_id" })
     .select(
-      "branch_id, walk_in_open_play_fee_cents, default_open_play_fee_cents, exclusive_court_fee_cents, walk_in_exclusive_fee_cents, updated_at"
+      "branch_id, walk_in_open_play_fee_cents, default_open_play_fee_cents, exclusive_court_fee_cents, walk_in_exclusive_fee_cents, exclusive_open_hour, exclusive_close_hour, updated_at"
     )
     .single();
 

@@ -1,6 +1,6 @@
 import { BRAND_SHORT_DESCRIPTION } from "@/lib/brand";
 
-export const APP_NAME = "House No 14 Admin";
+export const APP_NAME = "The Grounds Admin";
 export const APP_DESCRIPTION = BRAND_SHORT_DESCRIPTION;
 
 export const ROLES = [

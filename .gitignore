@@ -45,7 +45,8 @@ credentials.json
 *.tsbuildinfo
 next-env.d.ts
 
-/supabase
+/supabase/.temp
+/supabase/.branches
 
 # Piper TTS WASM/ONNX runtime (copied via postinstall)
 /public/onnx/

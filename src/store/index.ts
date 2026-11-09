@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type { StaffRole } from "@/lib/constants";
 import type { Branch, StaffProfile } from "@/types";
 import { clearDemoCookie } from "@/lib/demo-mode";
+import { resetSessionVerification } from "@/lib/auth/ensure-session";
 
 interface AuthState {
   staff: StaffProfile | null;
@@ -38,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
         }),
       clearSession: () => {
         clearDemoCookie();
+        resetSessionVerification();
         set({
           staff: null,
           branch: null,
@@ -57,10 +59,22 @@ export const useAuthStore = create<AuthState>()(
         isDemoMode: state.isDemoMode,
       }),
       onRehydrateStorage: () => (state) => {
-        // Mark hydrated even when storage is empty (state may be undefined)
-        useAuthStore.setState({ _hasHydrated: true });
+        // Drop legacy demo sessions; demo mode is no longer supported.
+        if (state?.isDemoMode) {
+          clearDemoCookie();
+          useAuthStore.setState({
+            _hasHydrated: true,
+            staff: null,
+            branch: null,
+            role: null,
+            isDemoMode: false,
+          });
+          return;
+        }
+        useAuthStore.setState({ _hasHydrated: true, isDemoMode: false });
         if (state) {
           state._hasHydrated = true;
+          state.isDemoMode = false;
         }
       },
     }

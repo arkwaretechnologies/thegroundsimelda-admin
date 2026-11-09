@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 export function AppHeader({ title, subtitle }: { title?: string; subtitle?: string }) {
   const { setTheme, resolvedTheme } = useTheme();
   const { setMobileSidebarOpen } = useUIStore();
-  const { branch, isDemoMode } = useAuthStore();
+  const { branch } = useAuthStore();
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/10 bg-background/55 backdrop-blur-xl">
@@ -48,7 +48,6 @@ export function AppHeader({ title, subtitle }: { title?: string; subtitle?: stri
               {branch.name}
             </Badge>
           ) : null}
-          {isDemoMode ? <Badge variant="warning">Sample data</Badge> : null}
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-4 w-4" />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />

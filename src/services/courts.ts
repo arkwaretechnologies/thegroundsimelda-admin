@@ -71,13 +71,41 @@ export async function updateCourtSkillLevel(
   if (error) throw error;
 }
 
-export type CourtMode = "open_play" | "exclusive";
+export type CourtMode = "open_play" | "exclusive" | "hybrid";
+
+export function courtModeFromFlags(
+  isExclusive: boolean,
+  isOpenPlay: boolean
+): CourtMode {
+  if (isExclusive && isOpenPlay) return "hybrid";
+  if (isExclusive) return "exclusive";
+  return "open_play";
+}
 
 export async function updateCourtMode(
   client: Client,
   courtId: string,
   mode: CourtMode
 ) {
+  if (mode === "hybrid") {
+    const res = await fetch(`/api/courts/${courtId}/mode`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "hybrid" }),
+    });
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      throw new Error(payload.error ?? "Failed to save hybrid court mode");
+    }
+    const { data, error } = await client
+      .from("courts")
+      .select("*")
+      .eq("id", courtId)
+      .single();
+    if (error) throw new Error(error.message);
+    return mapCourtRow(data);
+  }
+
   const isExclusive = mode === "exclusive";
   const { data, error } = await (client as SupabaseClient).rpc(
     "update_court_mode",

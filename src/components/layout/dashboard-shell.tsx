@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { useAuthStore, useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 import { PageSkeleton } from "@/components/shared/loading-skeletons";
-import { setDemoCookie, clearDemoCookie } from "@/lib/demo-mode";
-import { loadStaffSessionFromSupabase } from "@/lib/auth/staff-session";
+import { clearDemoCookie } from "@/lib/demo-mode";
+import { ensureSessionVerified } from "@/lib/auth/ensure-session";
 import { toast } from "sonner";
 
 export function DashboardShell({
@@ -22,16 +22,15 @@ export function DashboardShell({
 }) {
   const router = useRouter();
   const staff = useAuthStore((s) => s.staff);
-  const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const hasHydrated = useAuthStore((s) => s._hasHydrated);
   const setSession = useAuthStore((s) => s.setSession);
   const clearSession = useAuthStore((s) => s.clearSession);
   const { sidebarCollapsed } = useUIStore();
+  const verifyToastShown = useRef(false);
 
   useEffect(() => {
     if (hasHydrated) return;
 
-    // Prefer zustand persist API when available; always fall back so we never hang
     const persistApi = (
       useAuthStore as unknown as {
         persist?: {
@@ -49,11 +48,9 @@ export function DashboardShell({
     }
 
     const unsub = persistApi?.onFinishHydration?.(finish);
-    const timeout = window.setTimeout(finish, 100);
 
     return () => {
       unsub?.();
-      window.clearTimeout(timeout);
     };
   }, [hasHydrated]);
 
@@ -66,67 +63,33 @@ export function DashboardShell({
       return;
     }
 
-    if (isDemoMode) {
-      setDemoCookie();
-      return;
-    }
-
     clearDemoCookie();
 
     let cancelled = false;
 
-    async function verifyLiveSession() {
-      try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser();
+    void (async () => {
+      const result = await ensureSessionVerified({ setSession, clearSession });
+      if (cancelled) return;
 
-        if (cancelled) return;
-
-        if (error || !user) {
-          clearSession();
-          router.replace("/login");
+      if (result === "unauthorized") {
+        if (!verifyToastShown.current) {
+          verifyToastShown.current = true;
           toast.error("Session expired. Please sign in again.");
-          return;
         }
-
-        const session = await loadStaffSessionFromSupabase(
-          supabase,
-          user.id,
-          user.email ?? ""
-        );
-
-        if (cancelled) return;
-
-        if (!session) {
-          await supabase.auth.signOut();
-          clearSession();
-          router.replace("/login");
-          toast.error("This account is not authorized for the admin dashboard.");
-          return;
-        }
-
-        setSession({
-          staff: session.staff,
-          branch: session.branch,
-          isDemoMode: false,
-        });
-      } catch {
-        if (!cancelled) {
-          toast.error("Could not verify your session. Try signing in again.");
-        }
+        router.replace("/login");
+        return;
       }
-    }
 
-    void verifyLiveSession();
+      if (result === "error" && !verifyToastShown.current) {
+        verifyToastShown.current = true;
+        toast.error("Could not verify your session. Try refreshing the page.");
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [staff, isDemoMode, hasHydrated, router, setSession, clearSession]);
+  }, [hasHydrated, staff?.id, router, setSession, clearSession]);
 
   if (!hasHydrated || !staff) {
     return (

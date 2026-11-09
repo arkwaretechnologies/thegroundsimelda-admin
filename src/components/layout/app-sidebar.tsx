@@ -78,7 +78,7 @@ const GROUPS = [
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { staff, role, clearSession, isDemoMode } = useAuthStore();
+  const { staff, role, clearSession } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } =
     useUIStore();
 
@@ -109,7 +109,7 @@ export function AppSidebar() {
         )}
       >
         <div className="flex items-center gap-3 px-5 py-5">
-          <BrandMark size="sm" className="h-11 w-11 rounded-2xl shadow-lg shadow-primary/30" />
+          <BrandMark size="sm" className="shadow-lg shadow-primary/30" />
           {!sidebarCollapsed ? (
             <div className="min-w-0">
               <BrandMark
@@ -191,7 +191,6 @@ export function AppSidebar() {
                 <p className="truncate text-sm font-medium">{staff.full_name}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {ROLE_LABELS[staff.role]}
-                  {isDemoMode ? " · Sample" : ""}
                 </p>
               </div>
             </div>
